@@ -45,6 +45,7 @@ class DatasheetReviewSystem:
         self.table_reviewer = TableFigureReviewer(self.config)
         self.output_generator = MarkdownGenerator(self.config)
         self.diff_generator = ChangesDiffGenerator(self.config)
+        self.llm_client = None  # Initialized when needed
 
         # Statistics tracking
         self.stats = {
@@ -94,6 +95,13 @@ class DatasheetReviewSystem:
 
         # Initialize database
         await self.db.connect()
+
+        # Initialize LLM client if enabled
+        if self.config.get('llm', {}).get('enabled', False):
+            logger.info("Initializing LLM client...")
+            self.llm_client = LLMClient(self.config)
+            await self.llm_client.__aenter__()
+            logger.info("LLM client initialized ✓")
 
         try:
             # Step 1: Extract document
@@ -148,6 +156,10 @@ class DatasheetReviewSystem:
             return output_path
 
         finally:
+            # Clean up LLM client
+            if self.llm_client:
+                await self.llm_client.__aexit__(None, None, None)
+
             await self.db.close()
 
     async def _extract_document(self, pdf_path: str, document_id: str) -> List[Chunk]:
@@ -261,19 +273,57 @@ class DatasheetReviewSystem:
             self.stats['processing']['avg_confidence'] = total_confidence / completed
 
     async def _review_text_chunk(self, chunk) -> tuple:
-        """Review a text chunk."""
-        # Language review
+        """Review a text chunk (with optional LLM enhancement)."""
+        # Language review (rule-based)
         corrected, changes = await self.language_reviewer.review_chunk(chunk.content)
+
+        # Calculate confidence
+        confidence = self.language_reviewer.calculate_confidence(changes)
+
+        # If LLM is enabled and confidence is low, enhance with LLM
+        if self.llm_client and confidence < 0.85:
+            try:
+                # Send to LLM for review
+                llm_response = await self.llm_client.review_text(
+                    chunk.content,
+                    context=f"Section: {chunk.section_hierarchy}"
+                )
+
+                # Use LLM suggestion if it has higher confidence
+                if llm_response.confidence > confidence:
+                    corrected = llm_response.content
+                    confidence = llm_response.confidence
+
+                    # Add LLM changes to stats
+                    if llm_response.metadata and 'changes' in llm_response.metadata:
+                        for llm_change in llm_response.metadata['changes']:
+                            changes_dict = {
+                                'type': 'llm_suggestion',
+                                'original': llm_change.get('original', ''),
+                                'corrected': llm_change.get('corrected', ''),
+                                'position': 0,
+                                'confidence': llm_response.confidence,
+                                'reason': llm_change.get('reason', 'LLM suggestion')
+                            }
+                            # Add to changes list for storage
+                            if not isinstance(changes, list):
+                                changes = list(changes)
+                            # Note: storing as dict directly instead of LanguageChange object
+
+            except Exception as e:
+                logger.warning(f"LLM review failed for chunk {chunk.chunk_id}: {e}")
+                # Continue with rule-based review
 
         # Update statistics
         for change in changes:
             self.stats['language_review']['total_changes'] += 1
-            if change.change_type == 'spelling':
-                self.stats['language_review']['spelling'] += 1
-            elif change.change_type == 'grammar':
-                self.stats['language_review']['grammar'] += 1
-            elif change.change_type == 'style':
-                self.stats['language_review']['style'] += 1
+            if hasattr(change, 'change_type'):
+                if change.change_type == 'spelling':
+                    self.stats['language_review']['spelling'] += 1
+                elif change.change_type == 'grammar':
+                    self.stats['language_review']['grammar'] += 1
+                elif change.change_type == 'style':
+                    self.stats['language_review']['style'] += 1
 
         # Generate diff markdown
         if changes:
@@ -283,18 +333,15 @@ class DatasheetReviewSystem:
         else:
             reviewed_content = corrected
 
-        # Calculate confidence
-        confidence = self.language_reviewer.calculate_confidence(changes)
-
         # Convert changes to dict for storage
         changes_dict = [
             {
-                'type': c.change_type,
-                'original': c.original,
-                'corrected': c.corrected,
-                'position': c.position,
-                'confidence': c.confidence,
-                'reason': c.reason
+                'type': c.change_type if hasattr(c, 'change_type') else c.get('type', 'unknown'),
+                'original': c.original if hasattr(c, 'original') else c.get('original', ''),
+                'corrected': c.corrected if hasattr(c, 'corrected') else c.get('corrected', ''),
+                'position': c.position if hasattr(c, 'position') else c.get('position', 0),
+                'confidence': c.confidence if hasattr(c, 'confidence') else c.get('confidence', 0.8),
+                'reason': c.reason if hasattr(c, 'reason') else c.get('reason', '')
             }
             for c in changes
         ]
@@ -434,12 +481,19 @@ class DatasheetReviewSystem:
 async def main():
     """Main entry point."""
     import sys
+    import argparse
 
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <pdf_path>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Datasheet Review System - Intelligent document processing with hybrid rule-based + LLM review'
+    )
+    parser.add_argument('pdf_path', help='Path to PDF file to review')
+    parser.add_argument('--with-llm', action='store_true',
+                       help='Enable LLM review for uncertain chunks (requires MCHP_LLM_API_KEY)')
+    parser.add_argument('--document-id', help='Optional document ID (default: filename)')
 
-    pdf_path = sys.argv[1]
+    args = parser.parse_args()
+
+    pdf_path = args.pdf_path
 
     if not Path(pdf_path).exists():
         print(f"Error: File not found: {pdf_path}")
@@ -448,8 +502,26 @@ async def main():
     # Create system
     system = DatasheetReviewSystem()
 
+    # Enable LLM if requested
+    if args.with_llm:
+        system.config['llm']['enabled'] = True
+        print("\n🤖 LLM Review Mode Enabled")
+        print(f"   API: {system.config['llm']['api_url']}")
+        print(f"   Model: {system.config['llm']['model']}")
+        print(f"   Streaming: {system.config['llm']['stream']}")
+        print()
+
+        # Check API key
+        import os
+        api_key = os.getenv(system.config['llm']['api_key_env'])
+        if not api_key:
+            print(f"❌ ERROR: {system.config['llm']['api_key_env']} environment variable not set!")
+            print("   Please set it with:")
+            print(f"   export {system.config['llm']['api_key_env']}='your-api-key-here'")
+            sys.exit(1)
+
     # Process document
-    output_path = await system.process_document(pdf_path)
+    output_path = await system.process_document(pdf_path, document_id=args.document_id)
 
     print(f"\n{'=' * 60}")
     print(f"Review complete!")

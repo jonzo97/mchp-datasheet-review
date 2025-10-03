@@ -56,6 +56,10 @@ pattern_library_db/
 # Environment variables
 .env
 
+# Reference files (from colleagues)
+reference/
+reference/chatbot_guide.md
+
 # OS
 .DS_Store
 Thumbs.db

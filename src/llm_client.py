@@ -37,6 +37,13 @@ class LLMClient:
         self.max_tokens = self.llm_config.get('max_tokens', 2000)
         self.timeout = self.llm_config.get('timeout', 30)
 
+        # Streaming configuration
+        self.stream = self.llm_config.get('stream', False)
+        self.stream_timeout = self.llm_config.get('stream_timeout', 60)
+
+        # SSL verification
+        self.verify_ssl = self.llm_config.get('verify_ssl', True)
+
         # Rate limiting
         self.rate_limit = self.llm_config.get('rate_limit', {})
         self.requests_per_minute = self.rate_limit.get('requests_per_minute', 20)
@@ -50,7 +57,15 @@ class LLMClient:
 
     async def __aenter__(self):
         """Async context manager entry."""
-        self.client = httpx.AsyncClient(timeout=self.timeout)
+        # Use tuple timeout format: (connect_timeout, read_timeout, write_timeout, pool_timeout)
+        # Based on colleague's implementation: 5s to connect, stream_timeout for reading
+        timeout_config = httpx.Timeout(
+            connect=5.0,  # Quick connect timeout
+            read=self.stream_timeout,  # Long timeout for streaming
+            write=10.0,
+            pool=5.0
+        )
+        self.client = httpx.AsyncClient(timeout=timeout_config, verify=self.verify_ssl)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -140,7 +155,7 @@ Format your response as JSON:
 
     async def _call_api(self, prompt: str) -> Dict[str, Any]:
         """
-        Make API call to LLM service.
+        Make API call to LLM service (with streaming support).
 
         Args:
             prompt: Prompt to send
@@ -148,13 +163,19 @@ Format your response as JSON:
         Returns:
             API response as dictionary
         """
+        # Use streaming if enabled
+        if self.stream:
+            return await self._call_api_stream(prompt)
+
+        # Non-streaming mode (fallback)
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8",
+            "api-key": self.api_key  # Microchip API uses 'api-key' header, not 'Authorization'
         }
 
+        # Microchip API only accepts: messages, temperature, stream
+        # Do NOT include model or max_tokens (causes 302 redirect)
         payload = {
-            "model": self.model,
             "messages": [
                 {
                     "role": "system",
@@ -166,7 +187,7 @@ Format your response as JSON:
                 }
             ],
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens
+            "stream": False
         }
 
         response = await self.client.post(
@@ -177,6 +198,103 @@ Format your response as JSON:
 
         response.raise_for_status()
         return response.json()
+
+    async def _call_api_stream(self, prompt: str) -> Dict[str, Any]:
+        """
+        Make streaming API call to LLM service.
+
+        Args:
+            prompt: Prompt to send
+
+        Returns:
+            API response as dictionary (accumulated from stream)
+        """
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "api-key": self.api_key  # Microchip API uses 'api-key' header, not 'Authorization'
+        }
+
+        # Microchip API only accepts: messages, temperature, stream
+        # Do NOT include model or max_tokens (causes 302 redirect)
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a technical documentation reviewer specializing in datasheets and technical specifications."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": self.temperature,
+            "stream": True
+        }
+
+        full_content = ""
+        finish_reason = None
+
+        try:
+            async with self.client.stream(
+                "POST",
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=self.stream_timeout
+            ) as response:
+                response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    line = line.strip()
+
+                    # Skip empty lines
+                    if not line:
+                        continue
+
+                    # Check for end of stream
+                    if line == "data: [DONE]":
+                        break
+
+                    # Parse SSE format: "data: {json}"
+                    if line.startswith("data: "):
+                        try:
+                            data_str = line[6:]  # Remove "data: " prefix
+                            chunk = json.loads(data_str)
+
+                            # Extract content delta from chunk
+                            if "choices" in chunk and len(chunk["choices"]) > 0:
+                                choice = chunk["choices"][0]
+
+                                # Handle delta format (streaming)
+                                if "delta" in choice:
+                                    delta = choice["delta"]
+                                    content_delta = delta.get("content", "")
+                                    full_content += content_delta
+
+                                    # Check for finish reason
+                                    if "finish_reason" in choice:
+                                        finish_reason = choice["finish_reason"]
+
+                        except json.JSONDecodeError as e:
+                            # Skip malformed JSON chunks
+                            print(f"Warning: Failed to parse stream chunk: {e}")
+                            continue
+
+            # Return accumulated response in standard format
+            return {
+                "choices": [{
+                    "message": {
+                        "content": full_content,
+                        "role": "assistant"
+                    },
+                    "finish_reason": finish_reason or "stop"
+                }]
+            }
+
+        except httpx.TimeoutException:
+            raise RuntimeError(f"Stream timeout after {self.stream_timeout}s")
+        except Exception as e:
+            raise RuntimeError(f"Streaming API error: {e}")
 
     def _parse_response(self, api_response: Dict[str, Any]) -> LLMResponse:
         """

@@ -49,16 +49,31 @@ tables_figures:
 
 # LLM Integration
 llm:
-  enabled: false  # Set to true when secure API is available
-  api_url: ""  # Secure LLM API endpoint
-  api_key_env: "LLM_API_KEY"  # Environment variable for API key
-  model: "gpt-4"
-  temperature: 0.3
-  max_tokens: 2000
-  timeout: 30
+  enabled: false  # Set to true to enable LLM review (use --with-llm flag)
+
+  # Microchip Internal LLM API Configuration
+  api_url: "https://ai-apps.microchip.com/chatbotAPI-test/api/chat/chatcompletions"
+  api_key_env: "MCHP_LLM_API_KEY"  # Environment variable for API key
+  model: "gpt-4"  # Microchip internal model (based on GPT-4)
+
+  # LLM Parameters
+  temperature: 0.3  # Lower = more focused, higher = more creative (0-1)
+  max_tokens: 2000  # Maximum response length
+  timeout: 30  # Non-streaming timeout (seconds)
+
+  # Streaming Configuration (REQUIRED for Microchip API)
+  stream: true  # Microchip API only supports streaming mode
+  stream_timeout: 60  # Streaming timeout (seconds)
+
+  # SSL Verification (for internal/test APIs)
+  verify_ssl: false  # Set to false for internal APIs with self-signed certs
+
+  # Rate Limiting
   rate_limit:
     requests_per_minute: 20
-    concurrent_requests: 5
+    concurrent_requests: 5  # Max parallel API calls
+
+  # Retry Configuration
   retry:
     max_attempts: 3
     backoff_factor: 2

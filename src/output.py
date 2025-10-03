@@ -7,6 +7,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from pathlib import Path
 import json
+import re
 
 
 class MarkdownGenerator:
@@ -111,11 +112,30 @@ class MarkdownGenerator:
 
         sections_seen = set()
 
+        # Patterns to exclude from ToC
+        exclude_patterns = [
+            r'^Figure\s+\d+$',  # "Figure 1", "Figure 2", etc.
+            r'^Table\s+\d+$',   # "Table 1", "Table 2", etc.
+            r'^Unknown Section$',
+            r'^\[Figure\s+\d+\]$',
+            r'^\[Table\s+\d+\]$'
+        ]
+
         for chunk in chunks:
             section = chunk.get('section_hierarchy', '')
 
-            # Only add unique sections
-            if section and section not in sections_seen and section != "Unknown Section":
+            # Skip if section matches any exclude pattern
+            should_exclude = False
+            for pattern in exclude_patterns:
+                if re.match(pattern, section):
+                    should_exclude = True
+                    break
+
+            # Only add unique, non-excluded sections with sufficient length
+            if (section and
+                section not in sections_seen and
+                not should_exclude and
+                len(section) >= 3):  # Minimum section name length
                 sections_seen.add(section)
 
                 # Create anchor link
