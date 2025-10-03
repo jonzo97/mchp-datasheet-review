@@ -5,6 +5,7 @@ Coordinates extraction, review, and output generation.
 
 import asyncio
 import yaml
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -18,6 +19,7 @@ from review_crossref import CrossReferenceValidator
 from review_tables import TableFigureReviewer
 from llm_client import LLMClient
 from output import MarkdownGenerator
+from changes_diff import ChangesDiffGenerator
 
 
 # Setup logging
@@ -42,6 +44,7 @@ class DatasheetReviewSystem:
         self.crossref_validator = CrossReferenceValidator(self.config)
         self.table_reviewer = TableFigureReviewer(self.config)
         self.output_generator = MarkdownGenerator(self.config)
+        self.diff_generator = ChangesDiffGenerator(self.config)
 
         # Statistics tracking
         self.stats = {
@@ -50,6 +53,18 @@ class DatasheetReviewSystem:
             'language_review': {'total_changes': 0, 'spelling': 0, 'grammar': 0, 'style': 0},
             'crossref': {'total': 0, 'valid': 0, 'invalid': 0},
             'tables_figures': {'tables': 0, 'figures': 0, 'issues': 0}
+        }
+
+        # Timing tracking
+        self.timing = {
+            'start_time': 0,
+            'extraction_time': 0,
+            'review_time': 0,
+            'crossref_time': 0,
+            'output_time': 0,
+            'total_time': 0,
+            'pages_per_second': 0,
+            'chunks_per_second': 0
         }
 
     def _load_config(self, config_path: str) -> Dict:
@@ -68,6 +83,9 @@ class DatasheetReviewSystem:
         Returns:
             Path to generated markdown output
         """
+        # Start timing
+        self.timing['start_time'] = time.time()
+
         logger.info(f"Starting document processing: {pdf_path}")
 
         # Generate document ID if not provided
@@ -80,25 +98,50 @@ class DatasheetReviewSystem:
         try:
             # Step 1: Extract document
             logger.info("Step 1: Extracting PDF content...")
+            step_start = time.time()
             chunks = await self._extract_document(pdf_path, document_id)
+            self.timing['extraction_time'] = time.time() - step_start
 
             # Step 2: Review chunks
             logger.info(f"Step 2: Reviewing {len(chunks)} chunks...")
+            step_start = time.time()
             await self._review_chunks(chunks, document_id)
+            self.timing['review_time'] = time.time() - step_start
 
             # Step 3: Validate cross-references
             logger.info("Step 3: Validating cross-references...")
+            step_start = time.time()
             crossref_report = await self._validate_crossrefs(document_id)
+            self.timing['crossref_time'] = time.time() - step_start
 
             # Step 4: Generate output
             logger.info("Step 4: Generating output...")
+            step_start = time.time()
             output_path = await self._generate_output(document_id, crossref_report)
+            self.timing['output_time'] = time.time() - step_start
+
+            # Calculate final timing metrics
+            self.timing['total_time'] = time.time() - self.timing['start_time']
+            total_pages = self.stats['document'].get('total_pages', 1)
+            total_chunks = self.stats['processing'].get('completed', 1)
+
+            self.timing['pages_per_second'] = total_pages / self.timing['total_time'] if self.timing['total_time'] > 0 else 0
+            self.timing['chunks_per_second'] = total_chunks / self.timing['total_time'] if self.timing['total_time'] > 0 else 0
 
             # Step 5: Generate summary report
             logger.info("Step 5: Generating summary report...")
-            summary_path = self.output_generator.generate_summary_report(self.stats)
+            summary_path = self.output_generator.generate_summary_report(self.stats, self.timing)
 
-            logger.info(f"Processing complete!")
+            # Step 6: Generate changes diff (if enabled)
+            if self.config.get('output', {}).get('generate_changes_diff', True):
+                logger.info("Step 6: Generating changes diff...")
+                diff_path = await self.diff_generator.generate_diff_summary(
+                    self.db, document_id, self.stats, self.timing
+                )
+                logger.info(f"Changes diff: {diff_path}")
+
+            logger.info(f"Processing complete in {self.timing['total_time']:.1f} seconds!")
+            logger.info(f"Speed: {self.timing['pages_per_second']:.1f} pages/sec")
             logger.info(f"Output: {output_path}")
             logger.info(f"Summary: {summary_path}")
 

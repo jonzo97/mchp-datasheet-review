@@ -127,6 +127,9 @@ output:
     include_comments: true
   table_of_contents: true
   embed_images: false  # Link instead of embed
+  generate_changes_diff: true  # Generate concise diff summary
+  roi_metrics:
+    manual_review_time_per_page: 5  # minutes (for ROI calculation)
 
 # Logging
 logging:

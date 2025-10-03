@@ -183,12 +183,13 @@ class MarkdownGenerator:
 
         return output_path
 
-    def generate_summary_report(self, stats: Dict) -> str:
+    def generate_summary_report(self, stats: Dict, timing: Dict = None) -> str:
         """
         Generate summary report of the review process.
 
         Args:
             stats: Statistics dictionary
+            timing: Timing data dictionary (optional)
 
         Returns:
             Path to summary report file
@@ -205,7 +206,7 @@ class MarkdownGenerator:
             lines.append(f"**Total Pages:** {doc.get('total_pages', 'N/A')}  ")
             lines.append(f"**Total Chunks:** {doc.get('total_chunks', 'N/A')}  ")
 
-        # Processing stats
+        # Processing stats with timing
         if 'processing' in stats:
             proc = stats['processing']
             lines.append("\n## Processing Statistics\n")
@@ -213,6 +214,15 @@ class MarkdownGenerator:
             lines.append(f"**Completed:** {proc.get('completed', 0)}  ")
             lines.append(f"**Failed:** {proc.get('failed', 0)}  ")
             lines.append(f"**Average Confidence:** {proc.get('avg_confidence', 0):.2f}  ")
+
+            # Add timing information if available
+            if timing:
+                lines.append(f"\n**Processing Time:** {timing.get('total_time', 0):.1f} seconds ({timing.get('total_time', 0)/60:.1f} minutes)  ")
+                lines.append(f"**Speed:** {timing.get('pages_per_second', 0):.2f} pages/second  ")
+                lines.append(f"**Extraction Time:** {timing.get('extraction_time', 0):.1f}s  ")
+                lines.append(f"**Review Time:** {timing.get('review_time', 0):.1f}s  ")
+                lines.append(f"**Cross-reference Time:** {timing.get('crossref_time', 0):.1f}s  ")
+                lines.append(f"**Output Generation Time:** {timing.get('output_time', 0):.1f}s  ")
 
         # Language review stats
         if 'language_review' in stats:
