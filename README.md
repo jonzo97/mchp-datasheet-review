@@ -21,10 +21,12 @@ python src/main.py path/to/datasheet.pdf
 ls -lh output/
 ```
 
-**Output:**
-- `*_reviewed.md` - Reviewed document with change tracking
+**Output Files (in `output/` directory):**
+- `*_reviewed.md` - Reviewed document with change tracking (strikethrough + red highlights)
 - `review_summary.md` - Statistics and metrics
-- `review_state.db` - SQLite database with all data
+- `review_state.db` - SQLite database with all data (in project root)
+
+**Note:** Output files are excluded from git (see `.gitignore`) to prevent accidentally sharing sensitive reviewed documents. You control what gets shared.
 
 ---
 
@@ -283,13 +285,40 @@ for item in items:
 
 ## 🔌 Integrating Your Internal API
 
-### **Minimal Implementation:**
+### **Step 1: Configure API Settings**
+
+Edit `config.yaml`:
+```yaml
+llm:
+  enabled: true  # Enable LLM integration
+  api_url: "https://your-internal-chatbot-api.company.com/v1"  # Your API endpoint
+  api_key_env: "INTERNAL_API_KEY"  # Environment variable name
+  model: "your-model-name"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 30
+```
+
+### **Step 2: Set Environment Variable**
+
+```bash
+export INTERNAL_API_KEY="your-api-key-here"
+# Or add to .env file:
+echo "INTERNAL_API_KEY=your-api-key-here" > .env
+```
+
+### **Step 3: Implement API Client**
+
+Edit `src/smart_queue.py` (lines 339-402) - replace the `InternalAPIClient` class:
+
 ```python
 class YourInternalAPI(InternalAPIClient):
     async def review(self, request):
+        # Call your internal chatbot API
         response = await self.call_your_api(
             text=request['content'],
-            context=request['context']
+            context=request['context'],
+            historical_context=request.get('historical_context')  # NEW: v0.3 context
         )
 
         return {
@@ -303,7 +332,31 @@ class YourInternalAPI(InternalAPIClient):
         return await self.call_batch_api(requests)
 ```
 
-See `src/smart_queue.py` for full integration guide.
+### **Step 4: Use the Smart Queue**
+
+```python
+from smart_queue import SmartReviewQueue, YourInternalAPI
+import os
+
+# Initialize API client
+api = YourInternalAPI(
+    endpoint=os.getenv("INTERNAL_API_URL"),
+    auth_token=os.getenv("INTERNAL_API_KEY")
+)
+
+# Process document with intelligent triage
+queue = SmartReviewQueue()
+results = await queue.process_with_api("doc_id", api)
+
+# Results include:
+# - Auto-approved (high confidence, no API call needed)
+# - API-reviewed (uncertain chunks sent to your chatbot)
+# - Needs human review (both rule-based and API uncertain)
+```
+
+**See also:**
+- `src/smart_queue.py` (lines 339-402) - Full implementation template
+- `docs/security_checklist.md` - API security requirements
 
 ---
 
