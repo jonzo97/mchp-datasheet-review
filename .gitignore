@@ -35,6 +35,7 @@ env/
 # Project-specific
 # Large PDF files (users should add their own)
 *.pdf
+wok-cooking-guide.pdf
 
 # Generated outputs
 output/
@@ -56,6 +57,9 @@ pattern_library_db/
 # Environment variables
 .env
 local_config.py
+
+# Test results
+test_vpn_results.txt
 
 # Reference files (from colleagues)
 reference/
