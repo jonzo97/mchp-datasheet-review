@@ -1,0 +1,135 @@
+# Datasheet Review System Configuration
+
+# Document Processing
+document:
+  chunk_size: 1500  # Target tokens per chunk
+  overlap: 200      # Token overlap between chunks
+  preserve_sections: true
+  extract_images: true
+  image_output_dir: "output/images"
+
+  # NEW: Chunking strategy
+  chunking_strategy: "fixed"  # "fixed" or "semantic"
+  min_chunk_size: 500   # Minimum size for semantic chunks
+  max_chunk_size: 2500  # Maximum size for semantic chunks
+
+# Database
+database:
+  path: "review_state.db"
+  backup_enabled: true
+  backup_interval: 300  # seconds
+
+# Language Review
+language_review:
+  enabled: true
+  spellcheck: true
+  grammar_check: true
+  style_check: true
+  language: "en-US"
+  technical_dictionary: "config/technical_terms.txt"
+
+# Cross-Reference Validation
+crossref:
+  enabled: true
+  reference_patterns:
+    - "Section\\s+\\d+(\\.\\d+)*"
+    - "Figure\\s+\\d+-\\d+"
+    - "Table\\s+\\d+-\\d+"
+    - "Equation\\s+\\d+-\\d+"
+  validate_targets: true
+  auto_fix: false
+
+# Table and Figure Processing
+tables_figures:
+  enabled: true
+  extract_structure: true
+  ocr_enabled: false
+  min_table_rows: 2
+  figure_min_dpi: 150
+
+# LLM Integration
+llm:
+  enabled: false  # Set to true when secure API is available
+  api_url: ""  # Secure LLM API endpoint
+  api_key_env: "LLM_API_KEY"  # Environment variable for API key
+  model: "gpt-4"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 30
+  rate_limit:
+    requests_per_minute: 20
+    concurrent_requests: 5
+  retry:
+    max_attempts: 3
+    backoff_factor: 2
+
+# Semi-Agentic Workflow
+workflow:
+  auto_approve_threshold: 0.9  # Confidence threshold for auto-approval
+  human_review_queue: true
+  checkpoint_interval: 10  # Save state every N chunks
+
+# NEW: Semantic Features (Optional - requires ChromaDB + sentence-transformers)
+semantic:
+  enabled: false  # Set to true after installing dependencies
+  embedding_model: "all-MiniLM-L6-v2"  # Fast, good quality (384-dim)
+  # Other options: "all-mpnet-base-v2" (768-dim, better quality)
+  #                "allenai/scibert_scivocab_uncased" (technical docs)
+  chroma_db_path: "./chroma_db"
+  pattern_library_enabled: true  # Learn from past reviews
+
+# NEW: Diff Mode (Document Version Comparison)
+diff_mode:
+  enabled: true
+  use_semantic_alignment: true  # Use embeddings for better alignment (if available)
+  significance_keywords:
+    - voltage
+    - current
+    - frequency
+    - temperature
+    - maximum
+    - minimum
+    - typical
+    - MHz
+    - GHz
+    - mA
+  similarity_threshold: 0.7  # For semantic matching
+
+# NEW: Smart Review Queue (Enhanced API Integration)
+smart_queue:
+  enabled: true
+  auto_approve_threshold: 0.95  # High confidence auto-approval
+  api_threshold: 0.9  # Send to API if below this
+  batch_size: 10
+  rate_limit_delay: 0.5  # Seconds between batches
+  use_context_retrieval: true  # Use historical patterns (requires semantic features)
+
+# NEW: Security Settings
+security:
+  # PDF Sanitization (manual for now - see docs/security_checklist.md)
+  warn_if_metadata: true  # Warn about potential metadata leakage
+
+  # Database Encryption (requires SQLCipher)
+  encrypt_database: false  # Set to true for sensitive documents
+
+  # API Security Verification
+  verify_api_ssl: true
+  require_api_compliance: ["tls1.2", "zero-retention"]  # Requirements checklist
+
+# Output Generation
+output:
+  format: "markdown"
+  output_dir: "output"
+  change_tracking:
+    strikethrough_deletions: true
+    highlight_additions: true
+    highlight_color: "red"
+    include_comments: true
+  table_of_contents: true
+  embed_images: false  # Link instead of embed
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/review.log"
+  console: true
