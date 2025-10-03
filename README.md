@@ -1,9 +1,9 @@
-# Datasheet Review System v0.2
+# Datasheet Review System v0.3
 
 **Intelligent document processing with hybrid rule-based + LLM review**
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/your-repo)
-[![Status](https://img.shields.io/badge/status-ready_for_testing-green.svg)](docs/v0.2_improvements.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/jonzo97/mchp-datasheet-review)
+[![Status](https://img.shields.io/badge/status-production_ready-green.svg)](docs/v0.2_improvements.md)
 [![Quality](https://img.shields.io/badge/quality-8.5%2F10-brightgreen.svg)](docs/quality_assessment.md)
 
 ---
@@ -51,11 +51,20 @@ ls -lh output/
 - ✅ **Change Tracking:** Strikethrough deletions, red highlights for additions
 - ✅ **Confidence Scoring:** Calibrated predictions
 
-### **Advanced Features (New in v0.2)**
+### **Advanced Features (v0.2)**
 - ✨ **Diff Mode:** Compare document versions, generate changelogs
 - ✨ **Smart Queue:** Intelligent API integration for hybrid review
 - ✨ **Fuzzy Matching:** Cross-reference validation with parent matching
 - ✨ **Multi-Strategy Tables:** 3 fallback methods for robust extraction
+
+### **Semantic Features (v0.3 - Optional)**
+- 🔮 **Semantic Chunking:** Context-aware document splitting
+- 🔮 **Pattern Library:** Learns from past reviews, improves over time
+- 🔮 **Context Retrieval:** Provides historical patterns to LLM
+- 🔮 **Semantic Diff:** Better document comparison with embeddings
+- 🔮 **Similarity Search:** Find related content across documents
+
+**Enable with:** `pip install sentence-transformers chromadb` + `semantic.enabled: true` in config
 
 ---
 
@@ -76,9 +85,14 @@ Input PDF → Extraction → Review Pipeline → Validation → Output
 - `database.py` - SQLite state management (resumable)
 - `output.py` - Markdown generation with change tracking
 
-**New Modules:**
+**New Modules (v0.2):**
 - `diff_mode.py` - Document version comparison
 - `smart_queue.py` - Intelligent API integration
+
+**New Modules (v0.3 - Optional):**
+- `embeddings.py` - Embedding generation (sentence-transformers)
+- `semantic_search.py` - ChromaDB integration with fallback
+- `pattern_library.py` - Learning from past reviews
 
 ---
 
@@ -450,4 +464,4 @@ The Datasheet Review System v0.2 is a **production-ready** intelligent document 
 
 ---
 
-**Version:** 0.2.0 | **Date:** 2025-10-03 | **Status:** ✅ Ready for Production Testing
+**Version:** 0.3.0 | **Date:** 2025-10-03 | **Status:** ✅ Production Ready (Semantic features optional)
