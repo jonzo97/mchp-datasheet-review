@@ -3,8 +3,8 @@
 **Intelligent document processing with hybrid rule-based + LLM review**
 
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/jonzo97/mchp-datasheet-review)
-[![Status](https://img.shields.io/badge/status-production_ready-green.svg)](docs/v0.2_improvements.md)
-[![Quality](https://img.shields.io/badge/quality-8.5%2F10-brightgreen.svg)](docs/quality_assessment.md)
+[![Status](https://img.shields.io/badge/status-production_ready-green.svg)](docs/security_checklist.md)
+[![Quality](https://img.shields.io/badge/quality-8.5%2F10-brightgreen.svg)](docs/archive/quality_assessment.md)
 
 ---
 
@@ -100,20 +100,19 @@ Input PDF → Extraction → Review Pipeline → Validation → Output
 
 ## 📖 Documentation
 
-### **Getting Started**
-- [Quick Demo](docs/demo_changes.md) - 5-minute walkthrough
-- [System Overview](docs/system_overview.md) - Architecture deep-dive
+### **Essential Reading**
+- **[Security Checklist](docs/security_checklist.md)** - **START HERE** for safe deployment
+- [System Overview](docs/system_overview.md) - Architecture and design deep-dive
+- [Industry Research](docs/industry_research.md) - Research findings + 20 deep research prompts
 
-### **Quality & Analysis**
-- [Quality Assessment](docs/quality_assessment.md) - Detailed quality analysis
-- [v0.2 Improvements](docs/v0.2_improvements.md) - What's new and better
+### **Planning & Development**
+- [Improvements Roadmap](docs/improvements_roadmap.md) - Path to v1.0 and beyond
+- [Archived Docs](docs/archive/) - Historical documentation (v0.1-v0.2 test results)
 
-### **Planning & Roadmap**
-- [Improvements Roadmap](docs/improvements_roadmap.md) - Path to v1.0
-- [Industry Research](docs/industry_research.md) - Research findings and future direction
-
-### **Security & Privacy**
-- [Security Checklist](docs/security_checklist.md) - Comprehensive security guide
+### **Quick Reference**
+- This README - Quick start, features, API integration
+- `config.yaml` - All configuration options with comments
+- `src/smart_queue.py` (lines 339-402) - API client implementation template
 
 ---
 
@@ -443,7 +442,7 @@ When integrating with your internal LLM API, **you MUST verify**:
 ### **For Demo/Testing:**
 1. Run on your datasheet: `python src/main.py your_doc.pdf`
 2. Review outputs in `output/` directory
-3. Check quality report in `docs/quality_assessment.md`
+3. Check the generated `review_summary.md` for statistics
 
 ### **For Production:**
 1. Implement your API client in `smart_queue.py`
@@ -465,22 +464,25 @@ When integrating with your internal LLM API, **you MUST verify**:
 datasheet-review/
 ├── src/
 │   ├── main.py              # Main orchestrator
-│   ├── extraction.py        # PDF chunking
+│   ├── extraction.py        # PDF chunking (+ semantic chunking)
 │   ├── review_language.py   # Language review
 │   ├── review_crossref.py   # Cross-ref validation
 │   ├── review_tables.py     # Table/figure checks
-│   ├── database.py          # State management
+│   ├── database.py          # State management (+ embedding storage)
 │   ├── output.py            # Markdown generation
 │   ├── llm_client.py        # LLM integration
-│   ├── diff_mode.py         # ✨ Version comparison
-│   └── smart_queue.py       # ✨ Smart API queue
+│   ├── diff_mode.py         # ✨ Version comparison (+ semantic diff)
+│   ├── smart_queue.py       # ✨ Smart API queue (+ context retrieval)
+│   ├── embeddings.py        # 🔮 Embedding generation (v0.3 - optional)
+│   ├── semantic_search.py   # 🔮 ChromaDB integration (v0.3 - optional)
+│   └── pattern_library.py   # 🔮 Learning from reviews (v0.3 - optional)
 ├── docs/
-│   ├── demo_changes.md      # Quick demo
-│   ├── quality_assessment.md
-│   ├── system_overview.md
-│   ├── improvements_roadmap.md
-│   └── v0.2_improvements.md # What's new
-├── output/                  # Generated outputs
+│   ├── security_checklist.md    # Security guide
+│   ├── industry_research.md     # Research + future direction
+│   ├── system_overview.md       # Architecture
+│   ├── improvements_roadmap.md  # Future plans
+│   └── archive/                 # Historical docs (v0.1-v0.2)
+├── output/                  # Generated outputs (excluded from git)
 ├── config.yaml              # Configuration
 ├── requirements.txt         # Dependencies
 └── README.md               # This file
