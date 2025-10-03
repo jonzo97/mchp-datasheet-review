@@ -11,6 +11,14 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 import json
 
+# Try to import local config for API key fallback (not in git)
+try:
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from local_config import MCHP_LLM_API_KEY as LOCAL_API_KEY
+except ImportError:
+    LOCAL_API_KEY = None
+
 
 @dataclass
 class LLMResponse:
@@ -31,7 +39,8 @@ class LLMClient:
 
         # API configuration
         self.api_url = self.llm_config.get('api_url', '')
-        self.api_key = os.getenv(self.llm_config.get('api_key_env', 'LLM_API_KEY'), '')
+        # Try environment variable first, then fall back to local_config.py
+        self.api_key = os.getenv(self.llm_config.get('api_key_env', 'LLM_API_KEY'), '') or LOCAL_API_KEY or ''
         self.model = self.llm_config.get('model', 'gpt-4')
         self.temperature = self.llm_config.get('temperature', 0.3)
         self.max_tokens = self.llm_config.get('max_tokens', 2000)

@@ -12,6 +12,12 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, 'src')
 
+# Try to import local config for API key fallback (not in git)
+try:
+    from local_config import MCHP_LLM_API_KEY as LOCAL_API_KEY
+except ImportError:
+    LOCAL_API_KEY = None
+
 from llm_client import LLMClient
 
 
@@ -23,13 +29,14 @@ async def test_api_connection():
     print("=" * 70)
     print()
 
-    # Check environment variable
-    api_key = os.getenv("MCHP_LLM_API_KEY")
+    # Check environment variable or local config fallback
+    api_key = os.getenv("MCHP_LLM_API_KEY") or LOCAL_API_KEY
     if not api_key:
-        print("❌ ERROR: MCHP_LLM_API_KEY environment variable not set!")
+        print("❌ ERROR: MCHP_LLM_API_KEY environment variable not set and no local_config.py found!")
         print()
-        print("Please set it with:")
-        print("  export MCHP_LLM_API_KEY='your-api-key-here'")
+        print("Please either:")
+        print("  1. Set environment variable: export MCHP_LLM_API_KEY='your-api-key-here'")
+        print("  2. Create local_config.py with: MCHP_LLM_API_KEY = 'your-api-key-here'")
         print()
         return False
 

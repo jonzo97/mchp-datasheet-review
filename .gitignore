@@ -55,6 +55,7 @@ pattern_library_db/
 
 # Environment variables
 .env
+local_config.py
 
 # Reference files (from colleagues)
 reference/
