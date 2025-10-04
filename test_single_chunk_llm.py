@@ -19,6 +19,9 @@ async def test_single_chunk():
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
+    # Enable LLM for testing
+    config['llm']['enabled'] = True
+
     # Sample chunk that triggers LLM (low confidence from rule-based review)
     # This is typical technical content with minor formatting issues
     test_chunk = """The PIC32MZ W1 Family of devices are general purpose, low-
