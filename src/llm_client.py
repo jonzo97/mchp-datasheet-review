@@ -147,17 +147,25 @@ Text to review:
         prompt += """
 Please provide:
 1. Corrected text
-2. List of changes made
+2. List of changes made (with before/after details)
 3. Confidence score (0-1)
 4. Brief reasoning for major changes
 
-Format your response as JSON:
+Format your response as JSON with this exact structure:
 {
-  "corrected_text": "...",
-  "changes": [...],
+  "corrected_text": "the corrected text here",
+  "changes": [
+    {
+      "original": "text before",
+      "corrected": "text after",
+      "reason": "why this change was made"
+    }
+  ],
   "confidence": 0.95,
-  "reasoning": "..."
+  "reasoning": "overall explanation of changes"
 }
+
+IMPORTANT: The "changes" array must contain objects with "original", "corrected", and "reason" fields.
 """
 
         return prompt

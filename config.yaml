@@ -61,6 +61,10 @@ llm:
   max_tokens: 2000  # Maximum response length
   timeout: 30  # Non-streaming timeout (seconds)
 
+  # LLM Trigger Thresholds
+  confidence_threshold: 0.95  # Call LLM if rule-based confidence is below this (0-1)
+  min_improvement: 0.05      # Only use LLM result if confidence improves by at least this much
+
   # Streaming Configuration (REQUIRED for Microchip API)
   stream: true  # Microchip API only supports streaming mode
   stream_timeout: 60  # Streaming timeout (seconds)

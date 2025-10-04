@@ -68,6 +68,14 @@ class DatasheetReviewSystem:
             'chunks_per_second': 0
         }
 
+        # LLM call tracking
+        self.llm_calls = {
+            'total_calls': 0,
+            'successful_calls': 0,
+            'failed_calls': 0,
+            'chunks_enhanced': 0
+        }
+
     def _load_config(self, config_path: str) -> Dict:
         """Load configuration from YAML file."""
         with open(config_path, 'r') as f:
@@ -150,6 +158,12 @@ class DatasheetReviewSystem:
 
             logger.info(f"Processing complete in {self.timing['total_time']:.1f} seconds!")
             logger.info(f"Speed: {self.timing['pages_per_second']:.1f} pages/sec")
+
+            # Log LLM usage stats if LLM was enabled
+            if self.llm_client:
+                logger.info(f"LLM Calls: {self.llm_calls['total_calls']} total, {self.llm_calls['successful_calls']} successful, {self.llm_calls['failed_calls']} failed")
+                logger.info(f"LLM Enhanced: {self.llm_calls['chunks_enhanced']} chunks improved by LLM")
+
             logger.info(f"Output: {output_path}")
             logger.info(f"Summary: {summary_path}")
 
@@ -281,30 +295,56 @@ class DatasheetReviewSystem:
         confidence = self.language_reviewer.calculate_confidence(changes)
 
         # If LLM is enabled and confidence is low, enhance with LLM
-        if self.llm_client and confidence < 0.85:
+        llm_threshold = self.config.get('llm', {}).get('confidence_threshold', 0.95)
+        if self.llm_client and confidence < llm_threshold:
             try:
+                # Track LLM call
+                self.llm_calls['total_calls'] += 1
+
                 # Send to LLM for review
                 llm_response = await self.llm_client.review_text(
                     chunk.content,
                     context=f"Section: {chunk.section_hierarchy}"
                 )
 
-                # Use LLM suggestion if it has higher confidence
-                if llm_response.confidence > confidence:
+                # Track successful call
+                self.llm_calls['successful_calls'] += 1
+
+                # Use LLM suggestion if it improves confidence significantly
+                min_improvement = self.config.get('llm', {}).get('min_improvement', 0.05)
+                if llm_response.confidence > (confidence + min_improvement):
                     corrected = llm_response.content
                     confidence = llm_response.confidence
+                    self.llm_calls['chunks_enhanced'] += 1
 
                     # Add LLM changes to stats
                     if llm_response.metadata and 'changes' in llm_response.metadata:
                         for llm_change in llm_response.metadata['changes']:
-                            changes_dict = {
-                                'type': 'llm_suggestion',
-                                'original': llm_change.get('original', ''),
-                                'corrected': llm_change.get('corrected', ''),
-                                'position': 0,
-                                'confidence': llm_response.confidence,
-                                'reason': llm_change.get('reason', 'LLM suggestion')
-                            }
+                            # Handle both string and dict formats (defensive parsing)
+                            if isinstance(llm_change, str):
+                                # LLM returned array of strings instead of objects
+                                changes_dict = {
+                                    'type': 'llm_suggestion',
+                                    'original': '',
+                                    'corrected': llm_change,
+                                    'position': 0,
+                                    'confidence': llm_response.confidence,
+                                    'reason': 'LLM suggestion'
+                                }
+                            elif isinstance(llm_change, dict):
+                                # Expected format: object with original/corrected/reason
+                                changes_dict = {
+                                    'type': 'llm_suggestion',
+                                    'original': llm_change.get('original', ''),
+                                    'corrected': llm_change.get('corrected', ''),
+                                    'position': 0,
+                                    'confidence': llm_response.confidence,
+                                    'reason': llm_change.get('reason', 'LLM suggestion')
+                                }
+                            else:
+                                # Unexpected format, skip
+                                continue
+
                             # Add to changes list for storage
                             if not isinstance(changes, list):
                                 changes = list(changes)
@@ -312,6 +352,7 @@ class DatasheetReviewSystem:
 
             except Exception as e:
                 logger.warning(f"LLM review failed for chunk {chunk.chunk_id}: {e}")
+                self.llm_calls['failed_calls'] += 1
                 # Continue with rule-based review
 
         # Update statistics
@@ -525,7 +566,16 @@ async def main():
 
     print(f"\n{'=' * 60}")
     print(f"Review complete!")
-    print(f"Output: {output_path}")
+
+    # Display LLM usage stats if enabled
+    if system.llm_client:
+        print(f"\nLLM API Usage:")
+        print(f"  Total Calls: {system.llm_calls['total_calls']}")
+        print(f"  Successful: {system.llm_calls['successful_calls']}")
+        print(f"  Failed: {system.llm_calls['failed_calls']}")
+        print(f"  Chunks Enhanced: {system.llm_calls['chunks_enhanced']}")
+
+    print(f"\nOutput: {output_path}")
     print(f"{'=' * 60}")
 
 
