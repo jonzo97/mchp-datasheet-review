@@ -20,6 +20,8 @@ class Reference:
     page_number: int
     is_valid: bool = False
     target_id: Optional[str] = None
+    confidence: float = 0.0  # Validation confidence (0.0 = broken, 1.0 = exact match)
+    match_reason: str = ""   # Why it matched (for fuzzy matches)
 
 
 class CrossReferenceValidator:
@@ -141,13 +143,14 @@ class CrossReferenceValidator:
                     targets.add(match.group(1))
 
         else:
-            # IMPROVED: Extract section numbers from multiple formats
+            # IMPROVED: Extract section numbers from multiple formats (aligned with extraction.py)
             section_patterns = [
-                r'^(\d+(?:\.\d+)*)\s+\w+',            # "1.2.3 word" (any word, not just caps)
-                r'(?:^|\n)\s*(\d+(?:\.\d+)*)\s+[A-Z]', # Line start + capital
-                r'Section\s+(\d+(?:\.\d+)*)',         # In "Section X.Y" text
-                r'SECTION\s+(\d+(?:\.\d+)*)',         # SECTION X.Y
-                r'^##+\s*(\d+(?:\.\d+)*)',            # Markdown headings
+                r'^(\d+(?:\.\d+)*)\s+[A-Z]',           # "1.2.3 TITLE"
+                r'^(\d+(?:\.\d+)*)\s+[a-z]',           # "1.2.3 introduction"
+                r'(?:^|\n)\s*(\d+(?:\.\d+)*)\s+\w+',   # Number + any word
+                r'SECTION\s+(\d+(?:\.\d+)*)',          # "SECTION 3.1"
+                r'Section\s+(\d+(?:\.\d+)*)',          # "Section 3.1"
+                r'^##+\s*(\d+(?:\.\d+)*)',             # Markdown headings
             ]
 
             for pattern in section_patterns:
@@ -159,73 +162,94 @@ class CrossReferenceValidator:
 
     def validate_references(self, references: List[Reference]) -> List[Reference]:
         """
-        Validate references against known targets with fuzzy matching.
+        Validate references against known targets with fuzzy matching and confidence scoring.
 
         Args:
             references: List of references to validate
 
         Returns:
-            Updated list with validation status
+            Updated list with validation status and confidence scores
         """
         for ref in references:
             targets = self.targets.get(ref.reference_type, set())
 
-            # Exact match first
+            # Exact match first - highest confidence
             if ref.target_number in targets:
                 ref.is_valid = True
                 ref.target_id = f"{ref.reference_type}_{ref.target_number}"
+                ref.confidence = 1.0
+                ref.match_reason = "Exact match"
                 continue
 
-            # IMPROVED: Fuzzy matching strategies
-            matched_target = self._fuzzy_match_target(ref.target_number, targets)
+            # IMPROVED: Fuzzy matching strategies with confidence scoring
+            matched_target, confidence, reason = self._fuzzy_match_with_confidence(
+                ref.target_number, targets
+            )
 
             if matched_target:
                 ref.is_valid = True
                 ref.target_id = f"{ref.reference_type}_{matched_target}"
+                ref.confidence = confidence
+                ref.match_reason = reason
             else:
                 ref.is_valid = False
+                ref.confidence = 0.0
+                ref.match_reason = "No match found"
 
         return references
 
-    def _fuzzy_match_target(self, ref_num: str, targets: Set[str]) -> Optional[str]:
+    def _fuzzy_match_with_confidence(self, ref_num: str, targets: Set[str]) -> Tuple[Optional[str], float, str]:
         """
-        Fuzzy match a reference to available targets.
+        Fuzzy match a reference to available targets with confidence scoring.
 
         Args:
             ref_num: Reference number to match
             targets: Set of valid target numbers
 
         Returns:
-            Matched target or None
+            Tuple of (matched_target, confidence, reason) or (None, 0.0, "") if no match
         """
-        # Strategy 1: Parent section match (3.1.5 → try 3.1, then 3)
+        # Strategy 1: Parent section match (3.1.5 → try 3.1, then 3) - High confidence
         if '.' in ref_num:
             parts = ref_num.split('.')
             for i in range(len(parts)-1, 0, -1):
                 parent = '.'.join(parts[:i])
                 if parent in targets:
-                    return parent
+                    return parent, 0.9, f"Parent section match ({parent})"
 
-        # Strategy 2: Hyphen simplification (3-3 → try 3, or try 33)
+        # Strategy 2: Hyphen simplification (3-3 → try 3, or try 33) - Medium confidence
         if '-' in ref_num:
             # Try first number
             simplified = ref_num.split('-')[0]
             if simplified in targets:
-                return simplified
+                return simplified, 0.85, f"Hyphen simplification ({ref_num} → {simplified})"
 
             # Try concatenation
             concat = ref_num.replace('-', '')
             if concat in targets:
-                return concat
+                return concat, 0.8, f"Hyphen removed ({ref_num} → {concat})"
 
-        # Strategy 3: Close numerical match (13 vs 13.0)
+        # Strategy 3: Close numerical match (13 vs 13.0) - High confidence
         ref_base = ref_num.rstrip('.0')
         for target in targets:
             target_base = target.rstrip('.0')
             if ref_base == target_base:
-                return target
+                return target, 0.95, f"Numerical equivalence ({ref_num} ≈ {target})"
 
-        return None
+        # Strategy 4: Similar number (off by one, transposed digits) - Lower confidence
+        for target in targets:
+            if self._are_similar(ref_num, target):
+                return target, 0.7, f"Similar number ({ref_num} → {target}, possible typo)"
+
+        return None, 0.0, ""
+
+    def _fuzzy_match_target(self, ref_num: str, targets: Set[str]) -> Optional[str]:
+        """
+        Legacy fuzzy match method (kept for backward compatibility).
+        Calls _fuzzy_match_with_confidence and returns only the target.
+        """
+        matched_target, _, _ = self._fuzzy_match_with_confidence(ref_num, targets)
+        return matched_target
 
     def build_reference_graph(self, all_references: List[Reference]) -> Dict[str, List[str]]:
         """
@@ -258,17 +282,24 @@ class CrossReferenceValidator:
 
     def generate_reference_report(self, references: List[Reference]) -> Dict:
         """
-        Generate a summary report of references.
+        Generate a summary report of references with confidence analysis.
 
         Args:
             references: List of all references
 
         Returns:
-            Dictionary with reference statistics
+            Dictionary with reference statistics including confidence breakdown
         """
         total = len(references)
         valid = sum(1 for ref in references if ref.is_valid)
         invalid = total - valid
+
+        # IMPROVED: Confidence-based categorization
+        exact_matches = sum(1 for ref in references if ref.confidence == 1.0)
+        high_confidence = sum(1 for ref in references if 0.85 <= ref.confidence < 1.0)
+        medium_confidence = sum(1 for ref in references if 0.7 <= ref.confidence < 0.85)
+        low_confidence = sum(1 for ref in references if 0.0 < ref.confidence < 0.7)
+        broken = sum(1 for ref in references if ref.confidence == 0.0)
 
         by_type = {}
         for ref in references:
@@ -285,14 +316,34 @@ class CrossReferenceValidator:
             'total_references': total,
             'valid_references': valid,
             'invalid_references': invalid,
+            'confidence_breakdown': {
+                'exact_match': exact_matches,
+                'high_confidence': high_confidence,  # 0.85-0.99
+                'medium_confidence': medium_confidence,  # 0.7-0.84
+                'low_confidence': low_confidence,  # 0.01-0.69
+                'broken': broken  # 0.0
+            },
             'by_type': by_type,
+            'uncertain_references': [
+                {
+                    'text': ref.reference_text,
+                    'type': ref.reference_type,
+                    'target': ref.target_number,
+                    'page': ref.page_number,
+                    'confidence': ref.confidence,
+                    'match_reason': ref.match_reason,
+                    'chunk_id': ref.chunk_id
+                }
+                for ref in references if 0.0 < ref.confidence < 0.8  # Uncertain matches
+            ],
             'broken_references': [
                 {
                     'text': ref.reference_text,
                     'type': ref.reference_type,
                     'target': ref.target_number,
                     'page': ref.page_number,
-                    'chunk_id': ref.chunk_id
+                    'chunk_id': ref.chunk_id,
+                    'suggestions': self.suggest_corrections(ref)
                 }
                 for ref in self.get_broken_references(references)
             ]

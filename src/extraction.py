@@ -93,7 +93,14 @@ class PDFExtractor:
         """
         structure = {}
         current_section = ""
-        section_pattern = re.compile(r'^(\d+\.)*\d+\s+[A-Z]')  # Matches numbered sections
+        # IMPROVED: More flexible section patterns to reduce false negatives
+        section_patterns = [
+            re.compile(r'^(\d+(?:\.\d+)*)\s+[A-Z]'),           # "1.2.3 TITLE"
+            re.compile(r'^(\d+(?:\.\d+)*)\s+[a-z]'),           # "1.2.3 introduction"
+            re.compile(r'(?:^|\n)\s*(\d+(?:\.\d+)*)\s+\w+'),   # Any word after number
+            re.compile(r'^SECTION\s+(\d+(?:\.\d+)*)'),         # "SECTION 3.1"
+            re.compile(r'^Section\s+(\d+(?:\.\d+)*)'),         # "Section 3.1"
+        ]
 
         for page_num in range(len(doc)):
             page = doc[page_num]
@@ -109,7 +116,7 @@ class PDFExtractor:
                             font_size = line["spans"][0].get("size", 0)
 
                             # Headers typically have larger font
-                            if font_size > 12 and section_pattern.match(text.strip()):
+                            if font_size > 12 and any(p.match(text.strip()) for p in section_patterns):
                                 current_section = text.strip()
 
             structure[page_num] = current_section
@@ -551,11 +558,15 @@ class PDFExtractor:
         # Split by double newline (paragraph boundaries)
         paragraphs = text.split('\n\n')
 
-        # Patterns for section headers
+        # IMPROVED: More flexible patterns for section headers
         section_patterns = [
-            re.compile(r'^(\d+\.)*\d+\s+[A-Z]'),  # Numbered sections: "3.1 SECTION"
-            re.compile(r'^[A-Z][A-Z\s]{10,}$'),   # ALL CAPS headings
-            re.compile(r'^[A-Z][a-z\s]+:$'),      # Title case with colon
+            re.compile(r'^(\d+(?:\.\d+)*)\s+[A-Z]'),           # "3.1 SECTION"
+            re.compile(r'^(\d+(?:\.\d+)*)\s+[a-z]'),           # "3.1 introduction"
+            re.compile(r'(?:^|\n)\s*(\d+(?:\.\d+)*)\s+\w+'),   # Number + any word
+            re.compile(r'^SECTION\s+(\d+(?:\.\d+)*)'),         # "SECTION 3.1"
+            re.compile(r'^Section\s+(\d+(?:\.\d+)*)'),         # "Section 3.1"
+            re.compile(r'^[A-Z][A-Z\s]{10,}$'),                # ALL CAPS headings
+            re.compile(r'^[A-Z][a-z\s]+:$'),                   # Title case with colon
         ]
 
         for para in paragraphs:

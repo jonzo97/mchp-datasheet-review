@@ -42,7 +42,9 @@ class LLMClient:
         # Try environment variable first, then fall back to local_config.py
         self.api_key = os.getenv(self.llm_config.get('api_key_env', 'LLM_API_KEY'), '') or LOCAL_API_KEY or ''
         self.model = self.llm_config.get('model', 'gpt-4')
-        self.temperature = self.llm_config.get('temperature', 0.3)
+        # IMPROVED: Default to 0.0 for deterministic, reproducible results
+        # temperature=0 ensures same input → same output (required for caching and auditing)
+        self.temperature = self.llm_config.get('temperature', 0.0)
         self.max_tokens = self.llm_config.get('max_tokens', 2000)
         self.timeout = self.llm_config.get('timeout', 30)
 
