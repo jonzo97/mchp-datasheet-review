@@ -17,6 +17,7 @@ from extraction import PDFExtractor
 from review_language import LanguageReviewer
 from review_crossref import CrossReferenceValidator
 from review_tables import TableFigureReviewer
+from completeness_validator import CompletenessValidator
 from llm_client import LLMClient
 from output import MarkdownGenerator
 from changes_diff import ChangesDiffGenerator
@@ -43,6 +44,7 @@ class DatasheetReviewSystem:
         self.language_reviewer = LanguageReviewer(self.config)
         self.crossref_validator = CrossReferenceValidator(self.config)
         self.table_reviewer = TableFigureReviewer(self.config)
+        self.completeness_validator = None  # Initialized with LLM if enabled
         self.output_generator = MarkdownGenerator(self.config)
         self.diff_generator = ChangesDiffGenerator(self.config)
         self.llm_client = None  # Initialized when needed
@@ -111,6 +113,10 @@ class DatasheetReviewSystem:
             await self.llm_client.__aenter__()
             logger.info("LLM client initialized ✓")
 
+            # Initialize completeness validator with LLM
+            self.completeness_validator = CompletenessValidator(self.config, self.llm_client)
+            logger.info("Completeness validator initialized ✓")
+
         try:
             # Step 1: Extract document
             logger.info("Step 1: Extracting PDF content...")
@@ -130,10 +136,19 @@ class DatasheetReviewSystem:
             crossref_report = await self._validate_crossrefs(document_id)
             self.timing['crossref_time'] = time.time() - step_start
 
+            # Step 3.5: Semantic completeness validation (if LLM enabled)
+            completeness_report = None
+            if self.completeness_validator:
+                logger.info("Step 3.5: Validating semantic completeness...")
+                step_start = time.time()
+                completeness_report = await self._validate_completeness(chunks)
+                self.timing['completeness_time'] = time.time() - step_start
+                logger.info(f"Completeness validation: {completeness_report.get('total_claims', 0)} claims analyzed")
+
             # Step 4: Generate output
             logger.info("Step 4: Generating output...")
             step_start = time.time()
-            output_path = await self._generate_output(document_id, crossref_report)
+            output_path = await self._generate_output(document_id, crossref_report, completeness_report)
             self.timing['output_time'] = time.time() - step_start
 
             # Calculate final timing metrics
@@ -492,7 +507,37 @@ class DatasheetReviewSystem:
 
         return report
 
-    async def _generate_output(self, document_id: str, crossref_report: Dict) -> str:
+    async def _validate_completeness(self, chunks: List) -> Dict:
+        """
+        Validate semantic completeness using LLM.
+
+        Args:
+            chunks: All document chunks
+
+        Returns:
+            Completeness validation report
+        """
+        document_structure = {
+            'total_chunks': len(chunks),
+            'sections': list(set(c.section_hierarchy for c in chunks))
+        }
+
+        report = await self.completeness_validator.validate_completeness(
+            chunks,
+            document_structure
+        )
+
+        # Store in stats
+        self.stats['completeness'] = {
+            'total_claims': report.get('total_claims', 0),
+            'supported': report.get('claims_supported', 0),
+            'unsupported': report.get('claims_unsupported', 0),
+            'support_rate': report.get('support_rate', 0)
+        }
+
+        return report
+
+    async def _generate_output(self, document_id: str, crossref_report: Dict, completeness_report: Dict = None) -> str:
         """Generate final markdown output."""
         # Get all chunks with reviews
         all_chunks = await self.db.get_all_chunks(document_id)

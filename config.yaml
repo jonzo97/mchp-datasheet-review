@@ -39,6 +39,16 @@ crossref:
   validate_targets: true
   auto_fix: false
 
+# Semantic Completeness Validation (requires LLM)
+completeness_validation:
+  enabled: true  # Requires llm.enabled=true
+  extract_claims_from:  # Sections where claims are typically made
+    - "introduction"
+    - "features"
+    - "overview"
+    - "highlights"
+  confidence_threshold: 0.7  # Minimum confidence to consider claim supported
+
 # Table and Figure Processing
 tables_figures:
   enabled: true
