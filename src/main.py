@@ -18,6 +18,7 @@ from review_language import LanguageReviewer
 from review_crossref import CrossReferenceValidator
 from review_tables import TableFigureReviewer
 from completeness_validator import CompletenessValidator
+from terminology_analyzer import TerminologyAnalyzer
 from llm_client import LLMClient
 from output import MarkdownGenerator
 from changes_diff import ChangesDiffGenerator
@@ -45,6 +46,7 @@ class DatasheetReviewSystem:
         self.crossref_validator = CrossReferenceValidator(self.config)
         self.table_reviewer = TableFigureReviewer(self.config)
         self.completeness_validator = None  # Initialized with LLM if enabled
+        self.terminology_analyzer = TerminologyAnalyzer(self.config)
         self.output_generator = MarkdownGenerator(self.config)
         self.diff_generator = ChangesDiffGenerator(self.config)
         self.llm_client = None  # Initialized when needed
@@ -144,6 +146,13 @@ class DatasheetReviewSystem:
                 completeness_report = await self._validate_completeness(chunks)
                 self.timing['completeness_time'] = time.time() - step_start
                 logger.info(f"Completeness validation: {completeness_report.get('total_claims', 0)} claims analyzed")
+
+            # Step 3.6: Terminology consistency analysis
+            logger.info("Step 3.6: Analyzing terminology consistency...")
+            step_start = time.time()
+            terminology_report = await self._analyze_terminology(chunks)
+            self.timing['terminology_time'] = time.time() - step_start
+            logger.info(f"Terminology analysis: {terminology_report.get('inconsistent_terms', 0)} inconsistencies found")
 
             # Step 4: Generate output
             logger.info("Step 4: Generating output...")
@@ -534,6 +543,20 @@ class DatasheetReviewSystem:
             'unsupported': report.get('claims_unsupported', 0),
             'support_rate': report.get('support_rate', 0)
         }
+
+        return report
+
+    async def _analyze_terminology(self, chunks: List) -> Dict:
+        """Analyze terminology consistency."""
+        report = await self.terminology_analyzer.analyze_terminology(chunks)
+
+        # Store in stats
+        if report.get('enabled'):
+            self.stats['terminology'] = {
+                'total_unique_terms': report.get('total_unique_terms', 0),
+                'inconsistent_terms': report.get('inconsistent_terms', 0),
+                'consistency_rate': report.get('consistency_rate', 0)
+            }
 
         return report
 

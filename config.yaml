@@ -49,6 +49,15 @@ completeness_validation:
     - "highlights"
   confidence_threshold: 0.7  # Minimum confidence to consider claim supported
 
+# Terminology Consistency Analysis
+terminology_analysis:
+  enabled: true
+  categories:  # Term categories to analyze
+    - "connectivity"  # Wi-Fi, Bluetooth, USB, Ethernet
+    - "peripherals"   # SPI, I2C, UART, CAN, ADC, DAC
+    - "features"      # DMA, PWM, Timer
+    - "memory"        # Flash, SRAM, EEPROM
+
 # Table and Figure Processing
 tables_figures:
   enabled: true
@@ -59,7 +68,7 @@ tables_figures:
 
 # LLM Integration
 llm:
-  enabled: false  # Set to true to enable LLM review (use --with-llm flag)
+  enabled: true  # TESTING: Enabled for semantic completeness validation
 
   # Microchip Internal LLM API Configuration
   api_url: "https://ai-apps.microchip.com/chatbotAPI-test/api/chat/chatcompletions"
