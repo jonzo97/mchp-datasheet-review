@@ -117,6 +117,15 @@ semantic:
   chroma_db_path: "./chroma_db"
   pattern_library_enabled: true  # Learn from past reviews
 
+# RAG (Retrieval-Augmented Generation) for Context-Aware Prompts
+rag:
+  enabled: false  # Enable after indexing approved datasheets
+  # To use RAG:
+  # 1. Set semantic.enabled=true and install dependencies
+  # 2. Index approved datasheets using KnowledgeBaseManager
+  # 3. Enable rag.enabled=true
+  # Benefits: LLM suggestions enhanced with examples from approved docs
+
 # NEW: Diff Mode (Document Version Comparison)
 diff_mode:
   enabled: true

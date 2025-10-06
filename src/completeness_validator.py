@@ -56,9 +56,10 @@ class ValidationResult:
 class CompletenessValidator:
     """Validates semantic completeness of technical documentation."""
 
-    def __init__(self, config: Dict, llm_client=None):
+    def __init__(self, config: Dict, llm_client=None, knowledge_base=None):
         self.config = config
         self.llm_client = llm_client
+        self.knowledge_base = knowledge_base
         self.enabled = config.get('completeness_validation', {}).get('enabled', False)
 
         # Sections that typically make claims
@@ -250,8 +251,8 @@ Content to analyze:
         # Determine severity
         severity = self._determine_severity(claim, evidence_found)
 
-        # Generate suggestion
-        suggestion = self._generate_suggestion(claim, evidence_found)
+        # Generate suggestion (with RAG enhancement if available)
+        suggestion = await self._generate_suggestion(claim, evidence_found)
 
         # Identify missing evidence
         missing_evidence = self._identify_missing_evidence(claim, evidence_found)
@@ -430,22 +431,44 @@ Content to analyze:
 
         return 'low'
 
-    def _generate_suggestion(
+    async def _generate_suggestion(
         self,
         claim: Claim,
         evidence: List[Evidence]
     ) -> str:
         """Generate actionable suggestion for improving documentation."""
+        # Base suggestion
         if not evidence:
             evidence_needed = ', '.join(claim.requires_evidence)
-            return f"Add {evidence_needed} or remove/clarify claim"
+            base_suggestion = f"Add {evidence_needed} or remove/clarify claim"
+        elif sum(e.relevance_score for e in evidence) / len(evidence) < 0.5:
+            base_suggestion = f"Strengthen evidence in {evidence[0].location} with more detailed specifications"
+        else:
+            return "Evidence found and adequate"
 
-        # Weak evidence
-        avg_relevance = sum(e.relevance_score for e in evidence) / len(evidence)
-        if avg_relevance < 0.5:
-            return f"Strengthen evidence in {evidence[0].location} with more detailed specifications"
+        # Enhance with RAG examples if available
+        if self.knowledge_base and self.knowledge_base.is_available():
+            try:
+                # Retrieve similar approved sections
+                similar = await self.knowledge_base.retrieve_similar_sections(
+                    query=claim.claim_text,
+                    section_type='features',
+                    n_results=2,
+                    min_quality=0.8
+                )
 
-        return "Evidence found and adequate"
+                if similar:
+                    examples = []
+                    for i, ex in enumerate(similar[:2], 1):
+                        doc_id = ex.get('document_id', 'unknown')
+                        examples.append(f"Example {i} from {doc_id}: {ex['content'][:150]}...")
+
+                    rag_context = "\n\nSee approved examples:\n" + "\n".join(examples)
+                    return base_suggestion + rag_context
+            except Exception as e:
+                logger.debug(f"RAG enhancement failed: {e}")
+
+        return base_suggestion
 
     def _identify_missing_evidence(
         self,

@@ -19,6 +19,7 @@ from review_crossref import CrossReferenceValidator
 from review_tables import TableFigureReviewer
 from completeness_validator import CompletenessValidator
 from terminology_analyzer import TerminologyAnalyzer
+from knowledge_base import KnowledgeBaseManager
 from llm_client import LLMClient
 from output import MarkdownGenerator
 from changes_diff import ChangesDiffGenerator
@@ -47,6 +48,7 @@ class DatasheetReviewSystem:
         self.table_reviewer = TableFigureReviewer(self.config)
         self.completeness_validator = None  # Initialized with LLM if enabled
         self.terminology_analyzer = TerminologyAnalyzer(self.config)
+        self.knowledge_base = KnowledgeBaseManager(self.config)  # RAG for approved examples
         self.output_generator = MarkdownGenerator(self.config)
         self.diff_generator = ChangesDiffGenerator(self.config)
         self.llm_client = None  # Initialized when needed
@@ -115,8 +117,17 @@ class DatasheetReviewSystem:
             await self.llm_client.__aenter__()
             logger.info("LLM client initialized ✓")
 
-            # Initialize completeness validator with LLM
-            self.completeness_validator = CompletenessValidator(self.config, self.llm_client)
+            # Initialize knowledge base (RAG) if available
+            if self.knowledge_base.is_available():
+                await self.knowledge_base.initialize_collection()
+                logger.info("Knowledge base (RAG) initialized ✓")
+
+            # Initialize completeness validator with LLM + RAG
+            self.completeness_validator = CompletenessValidator(
+                self.config,
+                self.llm_client,
+                self.knowledge_base
+            )
             logger.info("Completeness validator initialized ✓")
 
         try:
