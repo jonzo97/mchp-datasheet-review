@@ -194,6 +194,11 @@ class DatasheetReviewSystem:
 
         logger.info(f"Extracted {len(extracted_chunks)} chunks from {metadata['total_pages']} pages")
 
+        # IMPROVED: Inject TOC sections for accurate cross-reference validation
+        if hasattr(self.extractor, 'toc_sections') and self.extractor.toc_sections:
+            logger.info(f"Using {len(self.extractor.toc_sections)} section numbers from PDF TOC")
+            self.crossref_validator.update_targets('section', self.extractor.toc_sections)
+
         # Store chunks in database
         for chunk in tqdm(extracted_chunks, desc="Storing chunks"):
             db_chunk = Chunk(

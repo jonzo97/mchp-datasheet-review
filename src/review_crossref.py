@@ -209,7 +209,21 @@ class CrossReferenceValidator:
         Returns:
             Tuple of (matched_target, confidence, reason) or (None, 0.0, "") if no match
         """
-        # Strategy 1: Parent section match (3.1.5 → try 3.1, then 3) - High confidence
+        # Strategy 1: Add .0 suffix if missing (5 → 5.0) - Very high confidence
+        # This handles common case where references say "Section 5" but TOC has "5.0"
+        if '.' not in ref_num and not '-' in ref_num:
+            with_dot_zero = f"{ref_num}.0"
+            if with_dot_zero in targets:
+                return with_dot_zero, 0.98, f"Added .0 suffix ({ref_num} → {with_dot_zero})"
+
+        # Strategy 2: Numerical equivalence (13 vs 13.0, or 13.0 vs 13) - Very high confidence
+        ref_base = ref_num.rstrip('.0')
+        for target in targets:
+            target_base = target.rstrip('.0')
+            if ref_base == target_base:
+                return target, 0.97, f"Numerical equivalence ({ref_num} ≈ {target})"
+
+        # Strategy 3: Parent section match (3.1.5 → try 3.1, then 3) - High confidence
         if '.' in ref_num:
             parts = ref_num.split('.')
             for i in range(len(parts)-1, 0, -1):
@@ -217,7 +231,7 @@ class CrossReferenceValidator:
                 if parent in targets:
                     return parent, 0.9, f"Parent section match ({parent})"
 
-        # Strategy 2: Hyphen simplification (3-3 → try 3, or try 33) - Medium confidence
+        # Strategy 4: Hyphen simplification (3-3 → try 3, or try 33) - Medium confidence
         if '-' in ref_num:
             # Try first number
             simplified = ref_num.split('-')[0]
@@ -229,14 +243,7 @@ class CrossReferenceValidator:
             if concat in targets:
                 return concat, 0.8, f"Hyphen removed ({ref_num} → {concat})"
 
-        # Strategy 3: Close numerical match (13 vs 13.0) - High confidence
-        ref_base = ref_num.rstrip('.0')
-        for target in targets:
-            target_base = target.rstrip('.0')
-            if ref_base == target_base:
-                return target, 0.95, f"Numerical equivalence ({ref_num} ≈ {target})"
-
-        # Strategy 4: Similar number (off by one, transposed digits) - Lower confidence
+        # Strategy 5: Similar number (off by one, transposed digits) - Lower confidence
         for target in targets:
             if self._are_similar(ref_num, target):
                 return target, 0.7, f"Similar number ({ref_num} → {target}, possible typo)"

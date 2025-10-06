@@ -84,6 +84,28 @@ class PDFExtractor:
 
         return final_chunks
 
+    def _extract_toc_sections(self, doc: fitz.Document) -> set:
+        """
+        Extract section numbers from PDF table of contents.
+        This is the most reliable source of valid section numbers.
+
+        Returns:
+            Set of valid section numbers from TOC
+        """
+        section_numbers = set()
+
+        try:
+            toc = doc.get_toc()
+            for level, title, page in toc:
+                # Extract section number from title (e.g., "13.0 I/O Ports" -> "13.0")
+                match = re.match(r'^(\d+(?:\.\d+)*)', title.strip())
+                if match:
+                    section_numbers.add(match.group(1))
+        except Exception as e:
+            print(f"Warning: Could not extract TOC sections: {e}")
+
+        return section_numbers
+
     def _extract_structure(self, doc: fitz.Document) -> Dict[int, str]:
         """
         Extract document structure (sections, headings).
@@ -93,6 +115,13 @@ class PDFExtractor:
         """
         structure = {}
         current_section = ""
+
+        # IMPROVED: Extract valid sections from TOC first (most reliable)
+        toc_sections = self._extract_toc_sections(doc)
+
+        # Store TOC sections for cross-reference validation
+        self.toc_sections = toc_sections
+
         # IMPROVED: More flexible section patterns to reduce false negatives
         section_patterns = [
             re.compile(r'^(\d+(?:\.\d+)*)\s+[A-Z]'),           # "1.2.3 TITLE"
